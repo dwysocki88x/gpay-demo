@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Google Pay Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Google Pay JS -->
+  <script async src="https://pay.google.com/gp/p/js/pay.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: #fafafa;
+    }
+    #container {
+      text-align: center;
+    }
+    #result {
+      margin-top: 16px;
+      font-size: 14px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="gpay-button"></div>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const paymentsClient = new google.payments.api.PaymentsClient({
+      environment: 'TEST'
+    });
+
+    const paymentDataRequest = {
+      apiVersion: 2,
+      apiVersionMinor: 0,
+      allowedPaymentMethods: [{
+        type: 'CARD',
+        parameters: {
+          allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
+          allowedCardNetworks: ['VISA', 'MASTERCARD']
+        },
+        tokenizationSpecification: {
+          type: 'PAYMENT_GATEWAY',
+          parameters: {
+            gateway: 'example',
+            gatewayMerchantId: 'exampleGatewayMerchantId'
+          }
+        }
+      }],
+      merchantInfo: {
+        merchantName: 'RCS Demo Merchant'
+      },
+      transactionInfo: {
+        totalPriceStatus: 'FINAL',
+        totalPrice: '1.00',
+        currencyCode: 'EUR'
+      }
+    };
+
+    function onGooglePayLoaded() {
+      const button = paymentsClient.createButton({
+        onClick: onPayClicked
+      });
+      document.getElementById('gpay-button').appendChild(button);
+    }
+
+    async function onPayClicked() {
+      try {
+        const paymentData = await paymentsClient.loadPaymentData(paymentDataRequest);
+        document.getElementById('result').innerText = 'Payment authorized (TEST)';
+        // opcjonalnie redirect:
+        // window.location.href = '?status=success';
+      } catch (err) {
+        document.getElementById('result').innerText = 'Payment cancelled';
+        // window.location.href = '?status=cancel';
+      }
+    }
+
+    window.onGooglePayLoaded = onGooglePayLoaded;
+  </script>
+</body>
+</html>

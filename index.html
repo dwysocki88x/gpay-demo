@@ -2,91 +2,180 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Google Pay Demo</title>
+  <title>Google Pay (TEST) – RCS WebView Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: Arial, sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; background:#fafafa; }
-    #container { text-align:center; }
-    #result { margin-top: 14px; font-size: 14px; color: #333; max-width: 320px; }
+    #wrap { text-align:center; max-width: 360px; padding: 16px; }
+    #container { display:flex; justify-content:center; }
+    #status { margin-top: 14px; font-size: 14px; color:#333; }
   </style>
 </head>
 <body>
-  <div id="container">
-    <div id="gpay-button"></div>
-    <div id="result"></div>
+  <div id="wrap">
+    <div id="container"></div>
+    <div id="status"></div>
   </div>
 
   <script>
-    const resultEl = document.getElementById('result');
+    const statusEl = document.getElementById('status');
 
-    const baseRequest = { apiVersion: 2, apiVersionMinor: 0 };
+    /**
+     * Define the version of the Google Pay API referenced when creating your
+     * configuration
+     */
+    const baseRequest = {
+      apiVersion: 2,
+      apiVersionMinor: 0
+    };
 
-    const allowedCardNetworks = ['VISA', 'MASTERCARD'];
-    const allowedAuthMethods = ['PAN_ONLY', 'CRYPTOGRAM_3DS'];
+    /**
+     * Card networks supported by your site and your gateway
+     */
+    const allowedCardNetworks = ["AMEX", "DISCOVER", "INTERAC", "JCB", "MASTERCARD", "VISA"];
 
+    /**
+     * Card authentication methods supported by your site and your gateway
+     */
+    const allowedCardAuthMethods = ["PAN_ONLY", "CRYPTOGRAM_3DS"];
+
+    /**
+     * Identify your gateway and your site's gateway merchant identifier
+     */
     const tokenizationSpecification = {
       type: 'PAYMENT_GATEWAY',
       parameters: {
-        gateway: 'example',
-        gatewayMerchantId: 'exampleGatewayMerchantId'
+        'gateway': 'example',
+        'gatewayMerchantId': 'exampleGatewayMerchantId'
       }
     };
 
-    const allowedPaymentMethods = [{
+    /**
+     * Describe your site's support for the CARD payment method and its required fields
+     */
+    const baseCardPaymentMethod = {
       type: 'CARD',
-      parameters: { allowedAuthMethods, allowedCardNetworks },
-      tokenizationSpecification
-    }];
+      parameters: {
+        allowedAuthMethods: allowedCardAuthMethods,
+        allowedCardNetworks: allowedCardNetworks
+      }
+    };
 
-    let paymentsClient;
+    /**
+     * Describe your site's support for the CARD payment method including optional fields
+     */
+    const cardPaymentMethod = Object.assign(
+      {},
+      baseCardPaymentMethod,
+      { tokenizationSpecification: tokenizationSpecification }
+    );
 
-    function getIsReadyToPayRequest() {
-      return { ...baseRequest, allowedPaymentMethods };
+    /**
+     * An initialized google.payments.api.PaymentsClient object or null if not yet set
+     */
+    let paymentsClient = null;
+
+    /**
+     * Configure your site's support for payment methods supported by the Google Pay API.
+     */
+    function getGoogleIsReadyToPayRequest() {
+      return Object.assign({}, baseRequest, {
+        allowedPaymentMethods: [baseCardPaymentMethod]
+      });
     }
 
-    function getPaymentDataRequest() {
+    /**
+     * Configure support for the Google Pay API
+     */
+    function getGooglePaymentDataRequest() {
+      const paymentDataRequest = Object.assign({}, baseRequest);
+      paymentDataRequest.allowedPaymentMethods = [cardPaymentMethod];
+      paymentDataRequest.transactionInfo = getGoogleTransactionInfo();
+      paymentDataRequest.merchantInfo = {
+        merchantName: 'RCS Demo Merchant'
+      };
+      return paymentDataRequest;
+    }
+
+    /**
+     * Return an active PaymentsClient or initialize
+     */
+    function getGooglePaymentsClient() {
+      if (paymentsClient === null) {
+        paymentsClient = new google.payments.api.PaymentsClient({ environment: 'TEST' });
+      }
+      return paymentsClient;
+    }
+
+    /**
+     * Provide Google Pay API with a payment amount, currency, and amount status
+     */
+    function getGoogleTransactionInfo() {
       return {
-        ...baseRequest,
-        allowedPaymentMethods,
-        merchantInfo: { merchantName: 'RCS Demo Merchant' },
-        transactionInfo: {
-          totalPriceStatus: 'FINAL',
-          totalPrice: '1.00',
-          currencyCode: 'EUR'
-        }
+        countryCode: 'FR',
+        currencyCode: 'EUR',
+        totalPriceStatus: 'FINAL',
+        totalPrice: '1.00'
       };
     }
 
-    async function addGooglePayButton() {
-      const button = paymentsClient.createButton({ onClick: onPayClicked });
-      document.getElementById('gpay-button').appendChild(button);
-      resultEl.textContent = '';
+    /**
+     * Add a Google Pay purchase button
+     */
+    function addGooglePayButton() {
+      const paymentsClient = getGooglePaymentsClient();
+      const button = paymentsClient.createButton({ onClick: onGooglePaymentButtonClicked });
+      document.getElementById('container').innerHTML = '';
+      document.getElementById('container').appendChild(button);
     }
 
-    async function onPayClicked() {
-      try {
-        await paymentsClient.loadPaymentData(getPaymentDataRequest());
-        resultEl.textContent = 'Payment authorized (TEST)';
-      } catch (e) {
-        resultEl.textContent = 'Payment cancelled';
-      }
+    /**
+     * Initialize after Google-hosted JavaScript has loaded
+     */
+    function onGooglePayLoaded() {
+      const paymentsClient = getGooglePaymentsClient();
+      paymentsClient.isReadyToPay(getGoogleIsReadyToPayRequest())
+        .then(function(response) {
+          if (response.result) {
+            addGooglePayButton();
+            statusEl.textContent = '';
+          } else {
+            statusEl.textContent = 'Google Pay is not available on this device/browser.';
+          }
+        })
+        .catch(function(err) {
+          console.error(err);
+          statusEl.textContent = 'Google Pay init error. Check console.';
+        });
     }
 
-    async function onGooglePayLoaded() {
-      paymentsClient = new google.payments.api.PaymentsClient({ environment: 'TEST' });
+    /**
+     * Show payment sheet when button clicked
+     */
+    function onGooglePaymentButtonClicked() {
+      const paymentDataRequest = getGooglePaymentDataRequest();
+      paymentDataRequest.transactionInfo = getGoogleTransactionInfo();
 
-      try {
-        const ready = await paymentsClient.isReadyToPay(getIsReadyToPayRequest());
-        if (ready.result) {
-          await addGooglePayButton();
-        } else {
-          resultEl.textContent =
-            'Google Pay is not available in this browser/device. Try Chrome on Android with Google Pay set up.';
-        }
-      } catch (e) {
-        resultEl.textContent =
-          'Could not initialize Google Pay. Try another device/browser (Chrome/Android recommended).';
-      }
+      const paymentsClient = getGooglePaymentsClient();
+      paymentsClient.loadPaymentData(paymentDataRequest)
+        .then(function(paymentData) {
+          processPayment(paymentData);
+        })
+        .catch(function(err) {
+          console.error(err);
+          statusEl.textContent = 'Payment cancelled.';
+        });
+    }
+
+    /**
+     * Process payment data
+     */
+    function processPayment(paymentData) {
+      console.log(paymentData);
+      const paymentToken = paymentData?.paymentMethodData?.tokenizationData?.token;
+      statusEl.textContent = 'Payment authorized (TEST).';
+      // opcjonalnie: redirect po sukcesie
+      // window.location.href = '?status=success';
     }
   </script>
 
@@ -94,4 +183,3 @@
   <script async src="https://pay.google.com/gp/p/js/pay.js" onload="onGooglePayLoaded()"></script>
 </body>
 </html>
-

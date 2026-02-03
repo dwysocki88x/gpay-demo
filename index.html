@@ -4,28 +4,10 @@
   <meta charset="UTF-8" />
   <title>Google Pay Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Google Pay JS -->
-  <script async src="https://pay.google.com/gp/p/js/pay.js"></script>
-
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-      background: #fafafa;
-    }
-    #container {
-      text-align: center;
-    }
-    #result {
-      margin-top: 16px;
-      font-size: 14px;
-      color: #333;
-    }
+    body { font-family: Arial, sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; background:#fafafa; }
+    #container { text-align:center; }
+    #result { margin-top: 14px; font-size: 14px; color: #333; max-width: 320px; }
   </style>
 </head>
 <body>
@@ -35,57 +17,81 @@
   </div>
 
   <script>
-    const paymentsClient = new google.payments.api.PaymentsClient({
-      environment: 'TEST'
-    });
+    const resultEl = document.getElementById('result');
 
-    const paymentDataRequest = {
-      apiVersion: 2,
-      apiVersionMinor: 0,
-      allowedPaymentMethods: [{
-        type: 'CARD',
-        parameters: {
-          allowedAuthMethods: ['PAN_ONLY', 'CRYPTOGRAM_3DS'],
-          allowedCardNetworks: ['VISA', 'MASTERCARD']
-        },
-        tokenizationSpecification: {
-          type: 'PAYMENT_GATEWAY',
-          parameters: {
-            gateway: 'example',
-            gatewayMerchantId: 'exampleGatewayMerchantId'
-          }
-        }
-      }],
-      merchantInfo: {
-        merchantName: 'RCS Demo Merchant'
-      },
-      transactionInfo: {
-        totalPriceStatus: 'FINAL',
-        totalPrice: '1.00',
-        currencyCode: 'EUR'
+    const baseRequest = { apiVersion: 2, apiVersionMinor: 0 };
+
+    const allowedCardNetworks = ['VISA', 'MASTERCARD'];
+    const allowedAuthMethods = ['PAN_ONLY', 'CRYPTOGRAM_3DS'];
+
+    const tokenizationSpecification = {
+      type: 'PAYMENT_GATEWAY',
+      parameters: {
+        gateway: 'example',
+        gatewayMerchantId: 'exampleGatewayMerchantId'
       }
     };
 
-    function onGooglePayLoaded() {
-      const button = paymentsClient.createButton({
-        onClick: onPayClicked
-      });
+    const allowedPaymentMethods = [{
+      type: 'CARD',
+      parameters: { allowedAuthMethods, allowedCardNetworks },
+      tokenizationSpecification
+    }];
+
+    let paymentsClient;
+
+    function getIsReadyToPayRequest() {
+      return { ...baseRequest, allowedPaymentMethods };
+    }
+
+    function getPaymentDataRequest() {
+      return {
+        ...baseRequest,
+        allowedPaymentMethods,
+        merchantInfo: { merchantName: 'RCS Demo Merchant' },
+        transactionInfo: {
+          totalPriceStatus: 'FINAL',
+          totalPrice: '1.00',
+          currencyCode: 'EUR'
+        }
+      };
+    }
+
+    async function addGooglePayButton() {
+      const button = paymentsClient.createButton({ onClick: onPayClicked });
       document.getElementById('gpay-button').appendChild(button);
+      resultEl.textContent = '';
     }
 
     async function onPayClicked() {
       try {
-        const paymentData = await paymentsClient.loadPaymentData(paymentDataRequest);
-        document.getElementById('result').innerText = 'Payment authorized (TEST)';
-        // opcjonalnie redirect:
-        // window.location.href = '?status=success';
-      } catch (err) {
-        document.getElementById('result').innerText = 'Payment cancelled';
-        // window.location.href = '?status=cancel';
+        await paymentsClient.loadPaymentData(getPaymentDataRequest());
+        resultEl.textContent = 'Payment authorized (TEST)';
+      } catch (e) {
+        resultEl.textContent = 'Payment cancelled';
       }
     }
 
-    window.onGooglePayLoaded = onGooglePayLoaded;
+    async function onGooglePayLoaded() {
+      paymentsClient = new google.payments.api.PaymentsClient({ environment: 'TEST' });
+
+      try {
+        const ready = await paymentsClient.isReadyToPay(getIsReadyToPayRequest());
+        if (ready.result) {
+          await addGooglePayButton();
+        } else {
+          resultEl.textContent =
+            'Google Pay is not available in this browser/device. Try Chrome on Android with Google Pay set up.';
+        }
+      } catch (e) {
+        resultEl.textContent =
+          'Could not initialize Google Pay. Try another device/browser (Chrome/Android recommended).';
+      }
+    }
   </script>
+
+  <!-- IMPORTANT: call onGooglePayLoaded after pay.js loads -->
+  <script async src="https://pay.google.com/gp/p/js/pay.js" onload="onGooglePayLoaded()"></script>
 </body>
 </html>
+
